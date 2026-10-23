@@ -32,6 +32,8 @@ Bu sunucu, `workspace` klasörüne koyduğun belgeleri metne dönüştürür, Mi
 
 `.mcp.json` artık ortam değişkeni içermez; ayarlar proje kökündeki `.env` dosyasından okunur. Böylece yolu tek yerden değiştirmen yeterlidir.
 
+`--no-env-file` önemlidir: uv'nin `.env` dosyasını kendi başına okuyup Windows yollarındaki `\r`/`\n` dizilerini kaçış olarak yorumlamasını engeller; `.env` yalnızca sunucu tarafından okunur. `uv.lock` artık `torch==2.14.1+cu130` sürümüne sabitlendiği için `uv sync` ve `uv run` CUDA sürümünü korur. `.mcp.json` içindeki `--no-sync` yalnızca açılışı hızlandırmak için opsiyonel olarak bırakılmıştır.
+
 ### `.mcp.json` örneği
 ```json
 {
@@ -40,6 +42,8 @@ Bu sunucu, `workspace` klasörüne koyduğun belgeleri metne dönüştürür, Mi
       "command": "uv",
       "args": [
         "run",
+        "--no-sync",
+        "--no-env-file",
         "--directory",
         "C:\\Users\\mstf\\Documents\\general-rag-mcp",
         "python",
@@ -67,6 +71,7 @@ Yani `.env` değerleri mevcut ortam değişkenlerini **ezmez**. Değişiklikten 
 | `RAG_WORKSPACE` | `<proje>\workspace` | Sunucunun erişebildiği tek kök klasör. Mutlak yol önerilir; yoksa otomatik oluşturulur. | Evet, yeni konumda yeniden indeksle |
 | `RAG_DB_PATH` | `<proje>\rag_index.sqlite3` | Chunk'ların, embedding'lerin ve FTS tablosunun tutulduğu SQLite dosyası. | Evet, yeni DB boş başlar |
 | `RAG_EMBEDDING_MODEL` | `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2` | Hugging Face model kimliği veya yerel model yolu. Çok dilli, 384 boyutlu, CPU dostu. | Evet, `force=true` ile tüm dosyalar |
+| `RAG_DEVICE` | `auto` | Embedding cihazı: `auto` (CUDA varsa GPU), `cuda`, `cuda:1`, `cpu`. GPU modeli VRAM'de tutar (~450-500 MB); Unsloth ile VRAM sıkışırsa `cpu` yap. | Hayır |
 | `RAG_CHUNK_SIZE` | `550` | Chunk başına azami karakter. Küçük değer daha isabetli ama daha çok chunk; büyük değer daha az chunk ama seyrelmiş benzerlik. | Evet, `force=true` |
 | `RAG_CHUNK_OVERLAP` | `100` | Ardışık chunk'lar arası örtüşme. `CHUNK_SIZE`'ın %40'ını geçmemeli. | Evet, `force=true` |
 | `RAG_MAX_FILE_MB` | `100` | Tek dosya için MB cinsinden üst sınır; aşan dosya indekslenmez. | Hayır |
@@ -77,6 +82,8 @@ Yani `.env` değerleri mevcut ortam değişkenlerini **ezmez**. Değişiklikten 
 
 Ayrıntılı açıklamalar ve örnekler `.env` dosyasının içinde yorum olarak bulunur.
 
+**Windows yolları:** `.env` içinde yolları **tek tırnak** ile yaz (`'C:\Belgelerim\RAG'`) veya ileri bölü kullan (`'C:/Belgelerim/RAG'`). Çift tırnak içindeki `\r`, `\n` gibi diziler, `.env` dosyasını okuyan araçlarda (örn. `uv run`) kaçış karakterine dönüşüp yolu bozabilir. `.mcp.json` içindeki `--no-env-file` bu riski uv tarafında ortadan kaldırır; yine de tek tırnak kullanmak en güvenlisidir.
+
 ### Yaygın ayar senaryoları
 - **Daha isabetli arama:** `RAG_CHUNK_SIZE=450`, `RAG_CHUNK_OVERLAP=120`, ardından tüm dosyaları `force=true` ile yeniden indeksle.
 - **Daha hızlı / küçük indeks:** `RAG_CHUNK_SIZE=900`, `RAG_CHUNK_OVERLAP=80`.
@@ -84,6 +91,29 @@ Ayrıntılı açıklamalar ve örnekler `.env` dosyasının içinde yorum olarak
 - **Başlık bonusu sonuçları bozuyor:** `RAG_HEADING_BOOST=0` yap.
 - **Çok büyük belgeler:** `RAG_MAX_FILE_MB` değerini yükselt; RAM ve işlem süresini göz önünde bulundur.
 - **Farklı dil ağırlıklı belgeler:** Daha güçlü çok dilli bir model (örn. `BAAI/bge-m3`) seçip tüm indeksi yeniden oluştur.
+
+## GPU (CUDA) — offline kurulum
+`uv.lock`, `torch==2.14.1+cu130` (cp314, win_amd64) sürümüne sabitlendi. İnternet yoksa uv önbelleğinden kur:
+
+```powershell
+uv sync --offline
+```
+
+Alternatif olarak yalnızca torch'u kurmak istersen:
+```powershell
+uv pip install --offline --index-url https://download.pytorch.org/whl/cu130 --python ".venv\Scripts\python.exe" "torch==2.14.1+cu130"
+```
+
+Doğrulama:
+```powershell
+uv run --no-env-file --directory . python -c "import torch; print(torch.__version__, torch.cuda.is_available(), torch.cuda.get_device_name(0))"
+```
+
+- Bu projede test edilen sonuç: `2.14.1+cu130 True NVIDIA GeForce RTX 3060`.
+- Lock'taki torch kaynağı `https://download.pytorch.org/whl/cu130`, wheel adresi ise `download-r2.pytorch.org`; uv bu ikisini ayrı önbellek anahtarıyla sakladığı için kaynak URL'si `download.pytorch.org` olarak bırakıldı.
+- `uv sync` ve `uv run` artık torch'u CPU sürümüne düşürmez; lock tam çözümlenmiş durumda ve `uv lock --offline` da çalışır. Yeni bir bağımlılık eklersen ve paket uv önbelleğinde yoksa `uv lock` internet ister.
+- `RAG_DEVICE=auto` (varsayılan) ile embedding modeli CUDA varsa GPU'da yüklenir. Sunucu stderr'inde `Embedding modeli yükleniyor: ... (cuda)` ve `Embedding modeli hazır: cuda:0` görürsün.
+- CUDA sürücüsü yoksa veya sürücü CUDA 13.0 ile uyumsuzsa `auto` otomatik olarak CPU'ya düşer; zorlamak için `RAG_DEVICE=cuda` kullanma, önce sürücüyü güncelle.
 
 ## MCP araçları
 - `list_files`: workspace'teki desteklenen dosyaları listeler.
@@ -118,7 +148,9 @@ Ayrıntılı açıklamalar ve örnekler `.env` dosyasının içinde yorum olarak
 - Anlamsal arama sonuçları kesin hüküm değildir; kaynak metni `read_section`/`read_file` ile doğrula.
 
 ## Sorun giderme
-- **İlk indeksleme çok yavaş:** Embedding modeli indiriliyor ve CPU'da çalışıyor olabilir. İlk çağrı normalden uzundur; sonrakiler hızlanır.
+- **İlk indeksleme çok yavaş:** Embedding modeli indiriliyor ve CPU'da çalışıyor olabilir. İlk çağrı normalden uzundur; sonrakiler hızlanır. `RAG_DEVICE=auto` ve CUDA'lı torch ile GPU kullanıldığını stderr'den kontrol et.
+- **Torch tekrar CPU'ya döndü / `+cu130` kayboldu:** `uv.lock` içinde `torch` sürümünün `2.14.1+cu130` olduğunu doğrula ve `uv sync --offline` çalıştır. Lock elle değiştirilmişse `uv lock` çalıştırmak CPU sürümünü geri getirebilir; [GPU (CUDA)](#gpu-cuda--offline-kurulum) bölümüne bak.
+- **GPU görünmüyor:** `torch.cuda.is_available()` `False` ise NVIDIA sürücüsü yok/eski ya da torch CPU derlemesidir. `torch.__version__` içinde `+cu` olmalı.
 - **"İndeks boş" hatası:** Önce `index_file` veya `index_directory` çalıştır.
 - **Arama başlıkla bulmuyor:** `list_sections` ile başlığın indekste olduğunu doğrula; `RAG_HEADING_BOOST` değerini artır ve sunucuyu yeniden başlat.
 - **Ayar değişikliği etkisiz:** Değişkenin süreç ortamında da tanımlı olup olmadığını kontrol et (ortam değişkenleri `.env`'i ezer) ve sunucuyu yeniden başlat.

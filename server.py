@@ -26,15 +26,25 @@ def load_env_file(path: Path) -> None:
         else: value=re.split(r'\s+#',value,maxsplit=1)[0].strip()
         if key: os.environ.setdefault(key,value)
 
+def env_path(name: str, default: Path) -> Path:
+    raw=os.environ.get(name, str(default)).replace('\r','').replace('\n','').strip()
+    return Path(raw or str(default)).expanduser().resolve()
+
+def drop_corrupt_path_env() -> None:
+    for key in ('RAG_WORKSPACE','RAG_DB_PATH'):
+        if any(ord(c)<32 for c in os.environ.get(key,'')): os.environ.pop(key,None)
+
 APP_DIR = Path(__file__).resolve().parent
+drop_corrupt_path_env()
 load_env_file(Path(os.environ.get('RAG_ENV_FILE', str(APP_DIR / '.env'))).expanduser())
-WORKSPACE = Path(os.environ.get('RAG_WORKSPACE', str(APP_DIR / 'workspace'))).expanduser().resolve()
-DB_PATH = Path(os.environ.get('RAG_DB_PATH', str(APP_DIR / 'rag_index.sqlite3'))).expanduser().resolve()
+WORKSPACE = env_path('RAG_WORKSPACE', APP_DIR / 'workspace')
+DB_PATH = env_path('RAG_DB_PATH', APP_DIR / 'rag_index.sqlite3')
 MODEL_NAME = os.environ.get('RAG_EMBEDDING_MODEL', 'sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2')
 CHUNK_SIZE, CHUNK_OVERLAP = int(os.getenv('RAG_CHUNK_SIZE', '550')), int(os.getenv('RAG_CHUNK_OVERLAP', '100'))
 MAX_FILE_MB = int(os.getenv('RAG_MAX_FILE_MB', '100'))
 RRF_K = int(os.getenv('RAG_RRF_K', '60'))
 HEADING_BOOST = float(os.getenv('RAG_HEADING_BOOST', '0.45'))
+DEVICE = os.getenv('RAG_DEVICE', 'auto').strip().lower()
 mcp = FastMCP('General File RAG')
 _model = None
 TEXT_EXTS = {'.txt','.md','.markdown','.rst','.csv','.tsv','.json','.jsonl','.xml','.html','.htm','.rtf','.log','.yaml','.yml','.ini','.toml','.py','.js','.ts','.jsx','.tsx','.css','.sql','.sh','.ps1','.bat','.c','.h','.cpp','.hpp','.java','.go','.rs','.php','.rb','.ipynb'}
@@ -92,12 +102,20 @@ def db():
     if HAS_FTS: c.executescript(FTS_SQL)
     c.commit(); return c
 
+def resolve_device() -> str:
+    if DEVICE not in {'', 'auto'}: return DEVICE
+    try:
+        import torch
+        return 'cuda' if torch.cuda.is_available() else 'cpu'
+    except Exception: return 'cpu'
+
 def model():
     global _model
     if _model is None:
-        print(f'Embedding modeli yükleniyor: {MODEL_NAME}', file=sys.stderr, flush=True)
-        _model=SentenceTransformer(MODEL_NAME)
-        print('Embedding modeli hazır.', file=sys.stderr, flush=True)
+        device=resolve_device()
+        print(f'Embedding modeli yükleniyor: {MODEL_NAME} ({device})', file=sys.stderr, flush=True)
+        _model=SentenceTransformer(MODEL_NAME, device=device)
+        print(f'Embedding modeli hazır: {_model.device}', file=sys.stderr, flush=True)
     return _model
 
 def extract_text(p: Path) -> str:

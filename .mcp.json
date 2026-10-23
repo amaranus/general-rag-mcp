@@ -4,6 +4,8 @@
       "command": "uv",
       "args": [
         "run",
+        "--no-sync",
+        "--no-env-file",
         "--directory",
         "C:\\Users\\mstf\\Documents\\general-rag-mcp",
         "python",
