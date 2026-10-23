@@ -6,7 +6,6 @@ dist/
 wheels/
 *.egg-info
 .vscode/
-rag_index.sqlite3
 mcp.json
 
 # Virtual environments
