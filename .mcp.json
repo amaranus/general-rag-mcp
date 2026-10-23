@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "general-rag": {
+      "command": "uv",
+      "args": [
+        "run",
+        "--directory",
+        "C:\\Users\\mstf\\Documents\\general-rag-mcp",
+        "python",
+        "server.py"
+      ]
+    }
+  }
+}

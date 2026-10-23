@@ -1,0 +1,20 @@
+[project]
+name = "general-rag-mcp"
+version = "0.1.0"
+description = "Local general-purpose file RAG MCP server"
+requires-python = ">=3.11,<3.15"
+dependencies = [
+  "mcp[cli]>=1.28,<2",
+  "sentence-transformers",
+  "numpy",
+  "pymupdf",
+  "python-docx",
+  "openpyxl",
+  "python-pptx",
+  "beautifulsoup4",
+  "striprtf",
+  "pillow",
+  "pytesseract",
+]
+[tool.uv]
+package = false

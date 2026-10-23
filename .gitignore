@@ -1,0 +1,13 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+.vscode/
+rag_index.sqlite3
+mcp.json
+
+# Virtual environments
+.venv
